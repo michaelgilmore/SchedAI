@@ -328,23 +328,23 @@ def main():
     c3.metric("Avg delay", f"{filtered['delay_minutes'].mean():.1f} min")
     c4.metric("Avg rating", f"{filtered['customer_rating'].mean():.2f}")
 
-    st.plotly_chart(make_on_time_chart(summary), use_container_width=True)
+    st.plotly_chart(make_on_time_chart(summary), width="stretch")
 
     st.subheader("Jobs by job type over time")
     st.plotly_chart(make_job_mix_chart(filtered, PERIODS[period], period),
-                    use_container_width=True)
+                    width="stretch")
 
-    st.plotly_chart(make_chart(summary), use_container_width=True)
+    st.plotly_chart(make_chart(summary), width="stretch")
 
     with st.expander("Data table"):
-        st.dataframe(summary, use_container_width=True, hide_index=True)
+        st.dataframe(summary, width="stretch", hide_index=True)
 
     st.subheader("Average actual duration")
     group_cols = st.multiselect("Break down by", FILTER_COLS, default=FILTER_COLS,
                                 format_func=lambda c: c.replace("_", " ").title())
     if group_cols:
         st.dataframe(duration_table(filtered, group_cols),
-                     use_container_width=True, hide_index=True)
+                     width="stretch", hide_index=True)
     else:
         st.caption("Pick at least one column to break down by.")
 
@@ -369,7 +369,7 @@ def main():
         late = (timeline["act_end"] > timeline["slot_end"]).sum()
         st.markdown(f"**{len(timeline)} jobs, {timeline['tech_id'].nunique()} techs, "
                     f"{late} finished after their booked slot.**")
-        st.plotly_chart(make_day_chart(timeline, day_start), use_container_width=True)
+        st.plotly_chart(make_day_chart(timeline, day_start), width="stretch")
 
 
 # ---------------------------------------------------------------------------
@@ -477,7 +477,7 @@ def recommend_page():
 
     st.subheader("All techs in this zone")
     st.plotly_chart(candidate_chart(cand, best["tech_id"], chosen_id),
-                    use_container_width=True)
+                    width="stretch")
     table = cand.assign(
         predicted=cand["predicted"].round(0).astype(int),
         likely_range=cand["low"].round(0).astype(int).astype(str) + "–" +
@@ -489,7 +489,7 @@ def recommend_page():
         "tech_id": "Tech", "seniority": "Seniority", "jobs_done": "Past jobs of this type",
         "predicted": "Predicted min", "likely_range": "Likely range", "slot": "Slot to book",
         "jobs_that_day": "Jobs that day", "free_hours": "Free hours", "has_room": "Has room"}),
-        use_container_width=True, hide_index=True)
+        width="stretch", hide_index=True)
 
     with st.expander("How the recommendation works"):
         st.markdown(
@@ -530,17 +530,17 @@ def impact_page():
                   annotation_text="80% target", annotation_position="top")
     fig.update_layout(height=320, xaxis=dict(tickformat=".0%", range=[0, 1.05]),
                       yaxis=dict(autorange="reversed"), margin=dict(t=40, b=30))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width="stretch")
 
     st.dataframe(res.assign(on_time=(res["on_time"] * 100).round(1),
                             booked_hours=res["booked_hours"].round(0).astype(int))
                  .rename(columns={"scenario": "Scenario", "on_time": "On-time %",
                                   "booked_hours": "Booked hours"}),
-                 use_container_width=True, hide_index=True)
+                 width="stretch", hide_index=True)
 
     st.subheader("Slot lengths SchedAI would book (minutes)")
     slots = cached_stats(df, rec_version())["group"]["slot"].unstack()[["Junior", "Mid", "Senior"]]
-    st.dataframe(slots, use_container_width=True)
+    st.dataframe(slots, width="stretch")
     st.caption("Today every cell would be 120. Short jobs get shorter slots, which pays for "
                "part of the extra time long jobs need.")
 
@@ -566,7 +566,7 @@ def check_login() -> bool:
         with st.form("login"):
             username = st.text_input("Username")
             password = st.text_input("Password", type="password")
-            submitted = st.form_submit_button("Sign in", use_container_width=True)
+            submitted = st.form_submit_button("Sign in", width="stretch")
         if submitted:
             expected = users.get(username.strip())
             if expected is not None and hmac.compare_digest(expected, password):
