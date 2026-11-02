@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit as st
 
 import recommender as rec
@@ -260,26 +259,33 @@ def make_on_time_chart(summary: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def make_chart(summary: pd.DataFrame) -> go.Figure:
-    fig = make_subplots(
-        rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08,
-        subplot_titles=("Average delay (minutes)", "Average customer rating"),
-    )
-    fig.add_trace(
-        go.Scatter(x=summary["date"], y=summary["avg_delay"], mode="lines+markers",
-                   name="Avg delay (min)", line=dict(color="#C2410C"),
-                   customdata=summary[["tickets"]],
-                   hovertemplate="%{x|%b %d, %Y}<br>%{y:.1f} min<br>%{customdata[0]} tickets<extra></extra>"),
-        row=1, col=1,
-    )
-    fig.add_trace(
-        go.Scatter(x=summary["date"], y=summary["avg_rating"], mode="lines+markers",
-                   name="Avg rating", line=dict(color="#1D4ED8"),
-                   hovertemplate="%{x|%b %d, %Y}<br>%{y:.2f}<extra></extra>"),
-        row=2, col=1,
-    )
-    fig.update_layout(height=620, showlegend=False, margin=dict(t=40, b=20),
-                      hovermode="x unified")
+def make_metric_chart(summary: pd.DataFrame, col: str, fmt: str, color: str,
+                      by_type: dict = None) -> go.Figure:
+    """One measure (e.g. avg_delay) over time. With by_type ({job type: summary}), draw one
+    line per job type plus a dashed grey line for all jobs together. fmt is the hover
+    number format, e.g. ".1f} min"."""
+    fig = go.Figure()
+    if not by_type:
+        fig.add_trace(go.Scatter(
+            x=summary["date"], y=summary[col], mode="lines+markers", line=dict(color=color),
+            customdata=summary[["tickets"]],
+            hovertemplate=f"%{{x|%b %d, %Y}}<br>%{{y:{fmt}<br>%{{customdata[0]}} tickets"
+                          "<extra></extra>"))
+        fig.update_layout(height=320, showlegend=False, margin=dict(t=10, b=20),
+                          hovermode="x unified")
+        return fig
+    for jt, sub in by_type.items():
+        fig.add_trace(go.Scatter(
+            x=sub["date"], y=sub[col], mode="lines+markers", name=jt,
+            line=dict(color=job_color(jt)), marker=dict(size=5),
+            hovertemplate=f"{jt}: %{{y:{fmt}<extra></extra>"))
+    fig.add_trace(go.Scatter(
+        x=summary["date"], y=summary[col], mode="lines", name="All jobs",
+        line=dict(color="#6B7280", dash="dash", width=2),
+        hovertemplate=f"All jobs: %{{y:{fmt}<extra></extra>"))
+    fig.update_layout(height=400, hovermode="x unified", margin=dict(t=10, b=20),
+                      legend=dict(title="Job type", orientation="h", y=-0.12, x=0,
+                                  yanchor="top"))
     return fig
 
 
@@ -307,12 +313,16 @@ def main():
         return
     filtered = df[(df["date"].dt.date >= start) & (df["date"].dt.date <= end)]
 
+    all_job_types = False
     for col in FILTER_COLS:
         options = sorted(df[col].unique())
         picked = st.sidebar.multiselect(col.replace("_", " ").title(), options,
                                         placeholder="All")
         if picked:
             filtered = filtered[filtered[col].isin(picked)]
+        if col == "job_type":
+            # "All" = nothing picked, or every job type picked
+            all_job_types = not picked or set(picked) == set(options)
 
     period = st.sidebar.radio("Group by", list(PERIODS), index=2)
 
@@ -334,7 +344,14 @@ def main():
     st.plotly_chart(make_job_mix_chart(filtered, PERIODS[period], period),
                     width="stretch")
 
-    st.plotly_chart(make_chart(summary), width="stretch")
+    by_type = ({jt: summarize(g, PERIODS[period]) for jt, g in filtered.groupby("job_type")}
+               if all_job_types else None)
+    st.subheader("Average delay (minutes)")
+    st.plotly_chart(make_metric_chart(summary, "avg_delay", ".1f} min", "#C2410C", by_type),
+                    width="stretch")
+    st.subheader("Average customer rating")
+    st.plotly_chart(make_metric_chart(summary, "avg_rating", ".2f}", "#1D4ED8", by_type),
+                    width="stretch")
 
     with st.expander("Data table"):
         st.dataframe(summary, width="stretch", hide_index=True)
