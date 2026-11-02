@@ -19,6 +19,9 @@ import streamlit as st
 import recommender as rec
 
 DEFAULT_CSV = Path(__file__).parent / "clearlink_service_tickets.csv"
+ASSETS = Path(__file__).parent / "assets"
+LOGO = ASSETS / "schedai_logo.png"
+ICON = ASSETS / "schedai_icon.png"
 FILTER_COLS = ["tech_seniority", "zone", "job_type"]
 PERIODS = {"Daily": "D", "Weekly": "W-MON", "Monthly": "MS"}
 
@@ -438,54 +441,79 @@ def candidate_chart(cand: pd.DataFrame, best_id: str, chosen_id: str) -> go.Figu
     return fig
 
 
+@st.dialog("Coming soon")
+def coming_soon(tech_id: str, minutes: int):
+    st.markdown(f"Assigning **{tech_id}** for **{minutes} min** would write the job straight "
+                "to the dispatch board in ServiceTitan.")
+    st.caption("That integration is coming soon. For now, use this screen to choose the tech "
+               "and the time to book.")
+
+
 def recommend_page():
-    st.title("Who should take this job?")
+    st.title("Assign a tech to a new job")
     st.caption("Enter a job. The recommendation uses 18 months of service tickets: "
                "how long this job type takes, and how fast each tech in the zone does it.")
     df = need_data()
     stats = cached_stats(df, rec_version())
 
-    c1, c2, c3 = st.columns(3)
-    job_type = c1.selectbox("Job type", sorted(df["job_type"].unique()))
-    zone = c2.selectbox("Zone", sorted(df["zone"].unique()))
-    last_day = df["date"].max().date()
-    day = c3.date_input("Day", last_day, min_value=df["date"].min().date(),
-                        max_value=last_day,
-                        help="A day from the data, so we can see who already has jobs booked.")
+    with st.container(border=True):
+        st.markdown("**New job**")
+        job_info = st.text_area(
+            "Job information", height=90,
+            placeholder="Customer name, address, and what the customer needs "
+                        "(e.g. \"New business, 3 data drops, wiring unknown\")")
+        c1, c2, c3 = st.columns(3)
+        last_day = df["date"].max().date()
+        day = c1.date_input("Day", last_day, min_value=df["date"].min().date(),
+                            max_value=last_day,
+                            help="A day from the data, so we can see who already has jobs booked.")
+        job_type = c2.selectbox("Job type", sorted(df["job_type"].unique()))
+        zone = c3.selectbox("Zone", sorted(df["zone"].unique()))
 
-    result = rec.recommend(stats, df, job_type, zone, day)
-    cand = result["candidates"]
-    best = cand.iloc[0].to_dict()
+        result = rec.recommend(stats, df, job_type, zone, day)
+        cand = result["candidates"]
+        best = cand.iloc[0].to_dict()
 
-    if not best["has_room"]:
-        st.warning("No tech in this zone has enough free time that day. Showing the best "
-                   "option anyway; consider another day.")
+        if not best["has_room"]:
+            st.warning("No tech in this zone has enough free time that day. Showing the best "
+                       "option anyway; consider another day.")
 
-    labels = {t: f"{t} ({s})" + ("  ★ recommended" if t == best["tech_id"] else "")
-              for t, s in zip(cand["tech_id"], cand["seniority"])}
-    a1, a2 = st.columns([2, 1])
-    chosen_id = a1.selectbox("Assign to", list(labels), index=0, format_func=labels.get,
-                             key=f"assign_{job_type}_{zone}_{day}",
-                             help="Starts on the recommended tech. Pick another to compare.")
-    tech = cand[cand["tech_id"] == chosen_id].iloc[0].to_dict()
-    is_best = chosen_id == best["tech_id"]
-    booked = int(a2.number_input(
-        "Job duration to book (min)", min_value=30, max_value=600, step=30,
-        value=rec.default_duration(tech["predicted"]),
-        key=f"dur_{job_type}_{zone}_{day}_{chosen_id}",
-        help="Starts at the predicted duration rounded up to the next half hour."))
-    chance = rec.chance_within(stats, tech, job_type, booked)
+        labels = {t: f"{t} ({s})" + ("  ★ recommended" if t == best["tech_id"] else "")
+                  for t, s in zip(cand["tech_id"], cand["seniority"])}
+        a1, a2 = st.columns([2, 1])
+        chosen_id = a1.selectbox("Assign to", list(labels), index=0, format_func=labels.get,
+                                 key=f"assign_{job_type}_{zone}_{day}",
+                                 help="Starts on the recommended tech. Pick another to compare.")
+        tech = cand[cand["tech_id"] == chosen_id].iloc[0].to_dict()
+        is_best = chosen_id == best["tech_id"]
+        booked = int(a2.number_input(
+            "Job duration to book (min)", min_value=30, max_value=600, step=30,
+            value=rec.default_duration(tech["predicted"]),
+            key=f"dur_{job_type}_{zone}_{day}_{chosen_id}",
+            help="Starts at the predicted duration rounded up to the next half hour."))
+        chance = rec.chance_within(stats, tech, job_type, booked)
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Recommended tech" if is_best else "Assigned tech", tech["tech_id"],
-              tech["seniority"], delta_color="off")
-    m2.metric("Predicted duration", f"{tech['predicted']:.0f} min",
-              f"likely {tech['low']:.0f}–{tech['high']:.0f} min", delta_color="off")
-    m3.metric("Booked duration", f"{booked} min",
-              f"{chance:.0%} of similar jobs fit · {booked - rec.TODAY_SLOT_MIN:+d} min vs. 2 h",
-              delta_color="off")
-    m4.metric("Free time that day", f"{tech['free_min'] / 60:.1f} h",
-              f"{tech['jobs_that_day']} other job(s)", delta_color="off")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Recommended tech" if is_best else "Assigned tech", tech["tech_id"],
+                  tech["seniority"], delta_color="off")
+        m2.metric("Predicted duration", f"{tech['predicted']:.0f} min",
+                  f"likely {tech['low']:.0f}–{tech['high']:.0f} min", delta_color="off")
+        m3.metric("Booked duration", f"{booked} min",
+                  f"{chance:.0%} of similar jobs fit · {booked - rec.TODAY_SLOT_MIN:+d} min vs. 2 h",
+                  delta_color="off")
+        m4.metric("Free time that day", f"{tech['free_min'] / 60:.1f} h",
+                  f"{tech['jobs_that_day']} other job(s)", delta_color="off")
+
+        # Bottom-right Assign button, larger than default (styled by its key below).
+        st.markdown(
+            "<style>[class*='st-key-assign_btn'] button {min-height: 3rem; "
+            "padding: 0.6rem 1.5rem;} [class*='st-key-assign_btn'] button p "
+            "{font-size: 1.2rem; font-weight: 600;}</style>",
+            unsafe_allow_html=True)
+        _, btn_col = st.columns([4, 1])
+        if btn_col.button("Assign", type="primary", width="stretch",
+                          key=f"assign_btn_{job_type}_{zone}_{day}"):
+            coming_soon(tech["tech_id"], booked)
 
     st.subheader(f"{tech['tech_id']}'s stats for this job")
     for reason in rec.explain(tech, job_type, result["is_long"], cand, best,
@@ -573,7 +601,10 @@ def check_login() -> bool:
         users = {}
     _, mid, _ = st.columns([1, 1.2, 1])
     with mid:
-        st.title("SchedAI")
+        if LOGO.exists():
+            st.image(str(LOGO), width=240)
+        else:
+            st.title("SchedAI")
         st.caption("Demo prototype using a fictional company and synthetic data. "
                    "Sign in to continue.")
         if not users:
@@ -593,7 +624,13 @@ def check_login() -> bool:
     return False
 
 
-st.set_page_config(page_title="SchedAI scheduling prototype", layout="wide")
+st.set_page_config(page_title="SchedAI scheduling prototype", layout="wide",
+                   page_icon=str(ICON) if ICON.exists() else None)
+# Halve the default gap above each page title (Streamlit uses 6rem).
+st.markdown("<style>[data-testid='stMainBlockContainer'], .block-container "
+            "{padding-top: 3rem;}</style>", unsafe_allow_html=True)
+if LOGO.exists():
+    st.logo(str(LOGO), size="large", icon_image=str(ICON) if ICON.exists() else None)
 if not check_login():
     st.stop()
 with st.sidebar:
@@ -602,7 +639,7 @@ with st.sidebar:
         st.session_state.clear()
         st.rerun()
 st.navigation([
-    st.Page(recommend_page, title="Recommend a tech", default=True),
+    st.Page(recommend_page, title="Assign a tech", default=True),
     st.Page(impact_page, title="Impact"),
     st.Page(main, title="Data analysis"),
 ]).run()
