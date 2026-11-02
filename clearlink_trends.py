@@ -1,5 +1,5 @@
 """
-ClearLink scheduling prototype: recommend a tech, show the impact, explore the data.
+SchedAI scheduling prototype: recommend a tech, show the impact, explore the data.
 
 Run:
     pip install -r requirements.txt     (streamlit>=1.36, pandas, plotly)
@@ -266,7 +266,7 @@ def make_chart(summary: pd.DataFrame) -> go.Figure:
 
 
 def main():
-    st.title("ClearLink: data analysis")
+    st.title("SchedAI: data analysis")
 
     st.sidebar.header("Data")
     upload = st.sidebar.file_uploader("Service ticket CSV", type="csv")
@@ -399,7 +399,7 @@ def candidate_chart(cand: pd.DataFrame, best_id: str, chosen_id: str) -> go.Figu
 
 def recommend_page():
     st.title("Who should take this job?")
-    st.caption("Enter a job. The recommendation uses 18 months of ClearLink tickets: "
+    st.caption("Enter a job. The recommendation uses 18 months of service tickets: "
                "how long this job type takes, and how fast each tech in the zone does it.")
     df = need_data()
     stats = cached_stats(df)
@@ -474,7 +474,7 @@ def recommend_page():
 
 
 def impact_page():
-    st.title("What changes if ClearLink schedules this way?")
+    st.title("What changes with SchedAI scheduling?")
     df = need_data()
     res, a = cached_impact(df)
     st.caption(f"Rules learned from tickets before {a['test_from']:%b %Y}, then replayed on "
@@ -506,7 +506,7 @@ def impact_page():
                                   "booked_hours": "Booked hours"}),
                  use_container_width=True, hide_index=True)
 
-    st.subheader("Slot lengths ClearLink would book (minutes)")
+    st.subheader("Slot lengths SchedAI would book (minutes)")
     slots = cached_stats(df)["group"]["slot"].unstack()[["Junior", "Mid", "Senior"]]
     st.dataframe(slots, use_container_width=True)
     st.caption("Today every cell would be 120. Short jobs get shorter slots, which pays for "
@@ -524,7 +524,7 @@ def check_login() -> bool:
         users = {}
     _, mid, _ = st.columns([1, 1.2, 1])
     with mid:
-        st.title("ClearLink scheduling")
+        st.title("SchedAI")
         st.caption("Demo prototype using a fictional company and synthetic data. "
                    "Sign in to continue.")
         if not users:
@@ -544,7 +544,7 @@ def check_login() -> bool:
     return False
 
 
-st.set_page_config(page_title="ClearLink scheduling prototype", layout="wide")
+st.set_page_config(page_title="SchedAI scheduling prototype", layout="wide")
 if not check_login():
     st.stop()
 with st.sidebar:

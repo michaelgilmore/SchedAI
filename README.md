@@ -1,9 +1,8 @@
-# SchedAI: ClearLink scheduling prototype
+# SchedAI: field service scheduling prototype
 
 A demo prototype built as a technical interview exercise.
-ClearLink Communications is a fictional regional internet provider, and all data
-is synthetic; no affiliation with any real company of that name is implied.
-ClearLink books every field service job into a 2-hour slot; this app shows
+The scenario is a fictional regional internet provider, and all data is synthetic.
+The provider books every field service job into a 2-hour slot; this app shows
 why that misses the 80% on-time target and what smarter scheduling would do.
 
 ## Pages

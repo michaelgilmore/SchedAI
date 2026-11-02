@@ -1,5 +1,5 @@
 """
-Scheduling logic for the ClearLink prototype. Plain pandas, no machine learning,
+Scheduling logic for the SchedAI prototype. Plain pandas, no machine learning,
 so every number can be checked by hand.
 
 1. Slot length: for each job type and seniority level, book the time within
@@ -19,7 +19,7 @@ import math
 import numpy as np
 import pandas as pd
 
-TODAY_SLOT_MIN = 120          # what ClearLink books for every job today
+TODAY_SLOT_MIN = 120          # what is booked for every job today
 TARGET_PCTL = 0.80            # slot = time within which 80% of similar jobs finished
 ROUND_TO_MIN = 15
 SHRINK_K = 10                 # a tech's own history counts fully after ~10 jobs
