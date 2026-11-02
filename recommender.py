@@ -95,34 +95,57 @@ def recommend(stats, hist: pd.DataFrame, job_type: str, zone: str, day) -> dict:
     return {"candidates": cand.reset_index(drop=True), "is_long": is_long}
 
 
-def explain(best: dict, job_type: str, is_long: bool, cand: pd.DataFrame) -> list:
-    """Plain-English reasons for the recommendation."""
+def explain(tech: dict, job_type: str, is_long: bool, cand: pd.DataFrame,
+            recommended: dict) -> list:
+    """Plain-English stats for one tech on this job, compared with the recommended tech."""
     reasons = []
-    if is_long:
-        slowest = cand["predicted"].max()
-        reasons.append(f"{job_type} often runs past 2 hours, so it goes to the fastest "
-                       f"tech in the zone with room today.")
-        reasons.append(f"{best['tech_id']} is predicted to take {best['predicted']:.0f} min; "
-                       f"the slowest option in this zone would take about {slowest:.0f} min.")
+    tid = tech["tech_id"]
+    if tid == recommended["tech_id"]:
+        if is_long:
+            slowest = cand["predicted"].max()
+            reasons.append(f"Recommended. {job_type} often runs past 2 hours, so it goes to "
+                           f"the fastest tech in the zone with room that day.")
+            reasons.append(f"{tid} is predicted to take {tech['predicted']:.0f} min; the "
+                           f"slowest option in this zone would take about {slowest:.0f} min.")
+        else:
+            reasons.append(f"Recommended. {job_type} almost always finishes inside 2 hours, "
+                           f"so a less senior tech is chosen to keep senior techs free for "
+                           f"long jobs.")
     else:
-        reasons.append(f"{job_type} almost always finishes inside 2 hours, so a less senior "
-                       f"tech is chosen to keep senior techs free for long jobs.")
-    if best["jobs_done"] > 0:
-        reasons.append(f"{best['tech_id']} has done {best['jobs_done']} of these jobs, "
-                       f"averaging {best['own_avg']:.0f} min (the {best['seniority'].lower()} "
-                       f"average is {best['level_avg']:.0f} min).")
+        rid, diff = recommended["tech_id"], tech["predicted"] - recommended["predicted"]
+        if abs(diff) < 1:
+            pace = "about the same time as"
+        else:
+            pace = f"{abs(diff):.0f} min {'longer' if diff > 0 else 'less'} than"
+        reasons.append(f"Not the recommended tech ({rid}). {tid} is predicted to take "
+                       f"{tech['predicted']:.0f} min, {pace} {rid}.")
+        more_senior = SENIORITY_ORDER[tech["seniority"]] > SENIORITY_ORDER[recommended["seniority"]]
+        if not is_long and more_senior:
+            reasons.append(f"{job_type} is a short job, so giving it to a more senior tech "
+                           f"uses time that is better spent on long jobs.")
+        if tech["slot"] != recommended["slot"]:
+            reasons.append(f"The slot to book changes from {recommended['slot']} to "
+                           f"{tech['slot']} min.")
+    if tech["jobs_done"] > 0:
+        reasons.append(f"{tid} has done {tech['jobs_done']} of these jobs, averaging "
+                       f"{tech['own_avg']:.0f} min (the {tech['seniority'].lower()} average "
+                       f"is {tech['level_avg']:.0f} min).")
     else:
-        reasons.append(f"{best['tech_id']} has no history on this job type, so the "
-                       f"{best['seniority'].lower()} average ({best['level_avg']:.0f} min) is used.")
-    if best["slot"] > TODAY_SLOT_MIN:
-        today = f"Today's 2-hour slot fits only {best['fits_today_pct']:.0%} of them."
+        reasons.append(f"{tid} has no history on this job type, so the "
+                       f"{tech['seniority'].lower()} average ({tech['level_avg']:.0f} min) is used.")
+    if tech["slot"] > TODAY_SLOT_MIN:
+        today = f"Today's 2-hour slot fits only {tech['fits_today_pct']:.0%} of them."
     else:
         today = (f"Today's 2-hour slot would leave about "
-                 f"{TODAY_SLOT_MIN - best['predicted']:.0f} min unused.")
-    reasons.append(f"Book {best['slot']} min: 80% of similar jobs finished within that "
+                 f"{TODAY_SLOT_MIN - tech['predicted']:.0f} min unused.")
+    reasons.append(f"Book {tech['slot']} min: 80% of similar jobs finished within that "
                    f"time. {today}")
-    reasons.append(f"{best['tech_id']} has {best['jobs_that_day']} other job(s) that day and "
-                   f"{best['free_min'] / 60:.1f} h free before this one.")
+    if tech["has_room"]:
+        reasons.append(f"{tid} has {tech['jobs_that_day']} other job(s) that day and "
+                       f"{tech['free_min'] / 60:.1f} h free before this one.")
+    else:
+        reasons.append(f"{tid} does not have room that day: {tech['free_min'] / 60:.1f} h "
+                       f"free, and this job needs {tech['slot'] / 60:.1f} h.")
     return reasons
 
 

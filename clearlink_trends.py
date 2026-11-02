@@ -375,9 +375,13 @@ def need_data():
     return load_data(DEFAULT_CSV)
 
 
-def candidate_chart(cand: pd.DataFrame, best_id: str) -> go.Figure:
-    top = cand.head(8).iloc[::-1]  # best at the top
-    colors = ["#15803D" if t == best_id else "#9CA3AF" for t in top["tech_id"]]
+def candidate_chart(cand: pd.DataFrame, best_id: str, chosen_id: str) -> go.Figure:
+    top = cand.head(8)
+    if chosen_id not in set(top["tech_id"]):  # always show the tech being looked at
+        top = pd.concat([top, cand[cand["tech_id"] == chosen_id]])
+    top = top.iloc[::-1]  # best at the top
+    colors = ["#15803D" if t == chosen_id else "#93C5FD" if t == best_id else "#9CA3AF"
+              for t in top["tech_id"]]
     labels = [f"{t} ({s})" for t, s in zip(top["tech_id"], top["seniority"])]
     fig = go.Figure(go.Bar(
         y=labels, x=top["predicted"], orientation="h", marker_color=colors,
@@ -416,22 +420,32 @@ def recommend_page():
         st.warning("No tech in this zone has enough free time that day. Showing the best "
                    "option anyway; consider another day.")
 
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Recommended tech", best["tech_id"], best["seniority"], delta_color="off")
-    m2.metric("Predicted duration", f"{best['predicted']:.0f} min",
-              f"likely {best['low']:.0f}–{best['high']:.0f} min", delta_color="off")
-    m3.metric("Book this slot", f"{best['slot']} min",
-              f"{best['slot'] - rec.TODAY_SLOT_MIN:+d} min vs. today's 2 h",
-              delta_color="off")
-    m4.metric("Free time that day", f"{best['free_min'] / 60:.1f} h",
-              f"{best['jobs_that_day']} other job(s)", delta_color="off")
+    labels = {t: f"{t} ({s})" + ("  ★ recommended" if t == best["tech_id"] else "")
+              for t, s in zip(cand["tech_id"], cand["seniority"])}
+    chosen_id = st.selectbox("Assign to", list(labels), index=0, format_func=labels.get,
+                             key=f"assign_{job_type}_{zone}_{day}",
+                             help="Starts on the recommended tech. Pick another to compare.")
+    tech = cand[cand["tech_id"] == chosen_id].iloc[0].to_dict()
+    is_best = chosen_id == best["tech_id"]
 
-    st.subheader("Why this tech")
-    for reason in rec.explain(best, job_type, result["is_long"], cand):
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Recommended tech" if is_best else "Assigned tech", tech["tech_id"],
+              tech["seniority"], delta_color="off")
+    m2.metric("Predicted duration", f"{tech['predicted']:.0f} min",
+              f"likely {tech['low']:.0f}–{tech['high']:.0f} min", delta_color="off")
+    m3.metric("Book this slot", f"{tech['slot']} min",
+              f"{tech['slot'] - rec.TODAY_SLOT_MIN:+d} min vs. today's 2 h",
+              delta_color="off")
+    m4.metric("Free time that day", f"{tech['free_min'] / 60:.1f} h",
+              f"{tech['jobs_that_day']} other job(s)", delta_color="off")
+
+    st.subheader(f"{tech['tech_id']}'s stats for this job")
+    for reason in rec.explain(tech, job_type, result["is_long"], cand, best):
         st.markdown(f"- {reason}")
 
     st.subheader("All techs in this zone")
-    st.plotly_chart(candidate_chart(cand, best["tech_id"]), use_container_width=True)
+    st.plotly_chart(candidate_chart(cand, best["tech_id"], chosen_id),
+                    use_container_width=True)
     table = cand.assign(
         predicted=cand["predicted"].round(0).astype(int),
         likely_range=cand["low"].round(0).astype(int).astype(str) + "–" +
