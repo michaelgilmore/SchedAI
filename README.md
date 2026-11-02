@@ -1,6 +1,8 @@
 # SchedAI: ClearLink scheduling prototype
 
-Prototype for the Opmed Forward Deployed Engineer home assignment.
+A demo prototype built as a technical interview exercise.
+ClearLink Communications is a fictional regional internet provider, and all data
+is synthetic; no affiliation with any real company of that name is implied.
 ClearLink books every field service job into a 2-hour slot; this app shows
 why that misses the 80% on-time target and what smarter scheduling would do.
 
@@ -17,7 +19,7 @@ why that misses the 80% on-time target and what smarter scheduling would do.
     streamlit run clearlink_trends.py
 
 Scheduling logic lives in `recommender.py`. The data (`clearlink_service_tickets.csv`)
-is the fictional dataset provided with the assignment.
+is a synthetic dataset provided with the exercise.
 
 ## Sign-in
 The app asks for a username and password. Logins are kept in Streamlit secrets,

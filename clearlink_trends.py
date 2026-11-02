@@ -525,7 +525,8 @@ def check_login() -> bool:
     _, mid, _ = st.columns([1, 1.2, 1])
     with mid:
         st.title("ClearLink scheduling")
-        st.caption("Prototype by Opmed. Sign in to continue.")
+        st.caption("Demo prototype using a fictional company and synthetic data. "
+                   "Sign in to continue.")
         if not users:
             st.error("No sign-ins are set up. Add a [users] section to the app's secrets "
                      "(see README).")
