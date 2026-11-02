@@ -9,6 +9,7 @@ Needs clearlink_service_tickets.csv and recommender.py in the same folder.
 The Data analysis page can also take an uploaded CSV from the sidebar.
 """
 
+import hmac
 from pathlib import Path
 
 import pandas as pd
@@ -498,7 +499,44 @@ def impact_page():
                "part of the extra time long jobs need.")
 
 
+def check_login() -> bool:
+    """Simple sign-in. Usernames and passwords live in Streamlit secrets, never in code:
+    .streamlit/secrets.toml locally, or the app's Secrets setting on Streamlit Cloud."""
+    if st.session_state.get("user"):
+        return True
+    try:
+        users = {str(k): str(v) for k, v in st.secrets["users"].items()}
+    except Exception:
+        users = {}
+    _, mid, _ = st.columns([1, 1.2, 1])
+    with mid:
+        st.title("ClearLink scheduling")
+        st.caption("Prototype by Opmed. Sign in to continue.")
+        if not users:
+            st.error("No sign-ins are set up. Add a [users] section to the app's secrets "
+                     "(see README).")
+            return False
+        with st.form("login"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("Sign in", use_container_width=True)
+        if submitted:
+            expected = users.get(username.strip())
+            if expected is not None and hmac.compare_digest(expected, password):
+                st.session_state["user"] = username.strip()
+                st.rerun()
+            st.error("Incorrect username or password.")
+    return False
+
+
 st.set_page_config(page_title="ClearLink scheduling prototype", layout="wide")
+if not check_login():
+    st.stop()
+with st.sidebar:
+    st.caption(f"Signed in as {st.session_state['user']}")
+    if st.button("Sign out"):
+        st.session_state.clear()
+        st.rerun()
 st.navigation([
     st.Page(recommend_page, title="Recommend a tech", default=True),
     st.Page(impact_page, title="Impact"),

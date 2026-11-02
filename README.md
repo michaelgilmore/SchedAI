@@ -18,3 +18,11 @@ why that misses the 80% on-time target and what smarter scheduling would do.
 
 Scheduling logic lives in `recommender.py`. The data (`clearlink_service_tickets.csv`)
 is the fictional dataset provided with the assignment.
+
+## Sign-in
+The app asks for a username and password. Logins are kept in Streamlit secrets,
+not in this repo:
+- **Locally:** copy `.streamlit/secrets.toml.example` to `.streamlit/secrets.toml`
+  and set passwords. That file is git-ignored.
+- **Streamlit Cloud:** paste the same `[users]` section into the app's
+  Settings → Secrets.
