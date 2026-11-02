@@ -303,13 +303,18 @@ def main():
         return
 
     summary = summarize(filtered, PERIODS[period])
-    st.plotly_chart(make_on_time_chart(summary), use_container_width=True)
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Tickets", f"{len(filtered):,}")
     c2.metric("On-time rate", f"{filtered['on_time_completion'].mean():.1%}")
     c3.metric("Avg delay", f"{filtered['delay_minutes'].mean():.1f} min")
     c4.metric("Avg rating", f"{filtered['customer_rating'].mean():.2f}")
+
+    st.plotly_chart(make_on_time_chart(summary), use_container_width=True)
+
+    st.subheader("Jobs by job type over time")
+    st.plotly_chart(make_job_mix_chart(filtered, PERIODS[period], period),
+                    use_container_width=True)
 
     st.plotly_chart(make_chart(summary), use_container_width=True)
 
@@ -347,10 +352,6 @@ def main():
         st.markdown(f"**{len(timeline)} jobs, {timeline['tech_id'].nunique()} techs, "
                     f"{late} finished after their booked slot.**")
         st.plotly_chart(make_day_chart(timeline, day_start), use_container_width=True)
-
-    st.subheader("Jobs by job type over time")
-    st.plotly_chart(make_job_mix_chart(filtered, PERIODS[period], period),
-                    use_container_width=True)
 
 
 # ---------------------------------------------------------------------------
