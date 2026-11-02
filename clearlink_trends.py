@@ -29,6 +29,13 @@ SLOTS_PER_DAY = 4
 SLOT_PAD = 0.08  # hours trimmed from each end of a dashed slot (~5 minutes)
 LUNCH_START, LUNCH_END = 12, 13
 JOB_COLORS = ["#1D4ED8", "#C2410C", "#15803D", "#7C3AED", "#B45309", "#0E7490", "#BE185D"]
+# Day view: fixed colour per job type, so a type looks the same on every day.
+DAY_FILL = {"Commercial Install": "#1D4ED8", "Full Residential Install": "#FACC15",
+            "Modem Upgrade": "#15803D", "Router/Modem Swap": "#7C3AED",
+            "Troubleshooting": "#B45309"}
+LATE_RED = "#DC2626"
+# Job types that always get a red outline (the two install types share it).
+RED_OUTLINE_TYPES = {"Commercial Install", "Full Residential Install"}
 
 @st.cache_data
 def load_data(source) -> pd.DataFrame:
@@ -135,7 +142,7 @@ def make_day_chart(tl: pd.DataFrame, day_start: float) -> go.Figure:
     xpos = {t: i for i, t in enumerate(techs)}
     tl = tl.assign(x=tl["tech_id"].map(xpos))
     types = sorted(tl["job_type"].unique())
-    color = {t: JOB_COLORS[i % len(JOB_COLORS)] for i, t in enumerate(types)}
+    color = {t: DAY_FILL.get(t, JOB_COLORS[i % len(JOB_COLORS)]) for i, t in enumerate(types)}
 
     fig = go.Figure()
     # Booked slots: dashed outlines behind the actual work.
@@ -153,12 +160,13 @@ def make_day_chart(tl: pd.DataFrame, day_start: float) -> go.Figure:
     for jt in types:
         sub = tl[tl["job_type"] == jt]
         late = sub["act_end"] > sub["slot_end"]
+        always_red = jt in RED_OUTLINE_TYPES
         fig.add_trace(go.Bar(
             x=sub["x"], base=sub["act_start"], y=sub["act_end"] - sub["act_start"],
             width=0.6, name=jt, marker=dict(color=color[jt], opacity=0.85,
-                                            line=dict(color=["#DC2626" if l else color[jt]
-                                                             for l in late],
-                                                      width=[3 if l else 1 for l in late])),
+                                            line=dict(color=[LATE_RED if (l or always_red)
+                                                             else color[jt] for l in late],
+                                                      width=[3 if l else 1.5 for l in late])),
             customdata=list(zip(sub["ticket_id"], sub["act_start"].map(clock),
                                 sub["act_end"].map(clock), sub["slot_start"].map(clock),
                                 sub["slot_end"].map(clock), sub["actual_duration_min"],
@@ -181,7 +189,7 @@ def make_day_chart(tl: pd.DataFrame, day_start: float) -> go.Figure:
 
     fig.update_layout(
         barmode="overlay", height=height,
-        title=dict(text="Booked slots (dashed) vs. actual work (solid); red outline = ran past its slot",
+        title=dict(text="Booked slots (dashed) vs. actual work (solid); thick red outline = ran past its slot",
                    yref="container", y=1 - 12 / height, yanchor="top"),
         legend=dict(title="Job type", orientation="h", x=0,
                     yref="container", y=1 - 48 / height, yanchor="top"),
