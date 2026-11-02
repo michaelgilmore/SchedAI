@@ -47,7 +47,23 @@ def build_stats(hist: pd.DataFrame):
     techs = hist.groupby("tech_id")[["tech_seniority", "zone"]].first()
     # A job type is "long" if even the slowest seniority level usually overruns 2 hours.
     long_jobs = set(group[group["fits_today"] < 0.9].index.get_level_values("job_type"))
-    return {"group": group, "tech": tech, "techs": techs, "long_jobs": long_jobs}
+    durations = {k: np.sort(g.to_numpy())
+                 for k, g in hist.groupby(["job_type", "tech_seniority"])["actual_duration_min"]}
+    return {"group": group, "tech": tech, "techs": techs, "long_jobs": long_jobs,
+            "durations": durations}
+
+
+def default_duration(predicted: float) -> int:
+    """Predicted duration rounded up to the next half hour."""
+    return int(math.ceil(predicted / 30) * 30)
+
+
+def chance_within(stats, tech: dict, job_type: str, minutes: float) -> float:
+    """Share of similar past jobs that finished within `minutes`: the tech's seniority
+    level's jobs, shifted by how much faster or slower this tech is than that level."""
+    d = stats["durations"][(job_type, tech["seniority"])]
+    shift = tech["predicted"] - tech["level_avg"]
+    return float(np.searchsorted(d, minutes - shift, side="right") / len(d))
 
 
 def predict(stats, tech_id: str, job_type: str) -> dict:
@@ -67,7 +83,10 @@ def predict(stats, tech_id: str, job_type: str) -> dict:
         "level_avg": float(g["mean"]), "predicted": float(pred),
         "low": float(g["p20"] + shift), "high": float(g["p80"] + shift),
         "slot": round_up(g["p80"] + shift),
-        "fits_today_pct": float(g["fits_today"]),
+        # Share of similar jobs (shifted by this tech's pace) that fit in today's 2 hours.
+        "fits_today_pct": float(np.searchsorted(stats["durations"][(job_type, sen)],
+                                                TODAY_SLOT_MIN - shift, side="right")
+                                / len(stats["durations"][(job_type, sen)])),
     }
 
 
@@ -96,7 +115,7 @@ def recommend(stats, hist: pd.DataFrame, job_type: str, zone: str, day) -> dict:
 
 
 def explain(tech: dict, job_type: str, is_long: bool, cand: pd.DataFrame,
-            recommended: dict) -> list:
+            recommended: dict, booked_min: int = None, booked_chance: float = None) -> list:
     """Plain-English stats for one tech on this job, compared with the recommended tech."""
     reasons = []
     tid = tech["tech_id"]
@@ -138,14 +157,24 @@ def explain(tech: dict, job_type: str, is_long: bool, cand: pd.DataFrame,
     else:
         today = (f"Today's 2-hour slot would leave about "
                  f"{TODAY_SLOT_MIN - tech['predicted']:.0f} min unused.")
-    reasons.append(f"Book {tech['slot']} min: 80% of similar jobs finished within that "
-                   f"time. {today}")
-    if tech["has_room"]:
+    if booked_min is None:
+        reasons.append(f"Book {tech['slot']} min: 80% of similar jobs finished within that "
+                       f"time. {today}")
+        needs = tech["slot"]
+    else:
+        guide = ("" if booked_min == tech["slot"] else
+                 f" The 80% guideline would book {tech['slot']} min.")
+        if booked_min == TODAY_SLOT_MIN:
+            today = "That is the same as today's 2-hour slot."
+        reasons.append(f"Booked {booked_min} min: about {booked_chance:.0%} of similar jobs "
+                       f"finished within that time.{guide} {today}")
+        needs = booked_min
+    if tech["free_min"] >= needs:
         reasons.append(f"{tid} has {tech['jobs_that_day']} other job(s) that day and "
                        f"{tech['free_min'] / 60:.1f} h free before this one.")
     else:
         reasons.append(f"{tid} does not have room that day: {tech['free_min'] / 60:.1f} h "
-                       f"free, and this job needs {tech['slot'] / 60:.1f} h.")
+                       f"free, and this job needs {needs / 60:.1f} h.")
     return reasons
 
 

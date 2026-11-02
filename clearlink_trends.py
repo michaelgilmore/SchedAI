@@ -28,14 +28,26 @@ SLOT_HOURS = 2
 SLOTS_PER_DAY = 4
 SLOT_PAD = 0.08  # hours trimmed from each end of a dashed slot (~5 minutes)
 LUNCH_START, LUNCH_END = 12, 13
-JOB_COLORS = ["#1D4ED8", "#C2410C", "#15803D", "#7C3AED", "#B45309", "#0E7490", "#BE185D"]
-# Day view: fixed colour per job type, so a type looks the same on every day.
-DAY_FILL = {"Commercial Install": "#1D4ED8", "Full Residential Install": "#FACC15",
-            "Modem Upgrade": "#15803D", "Router/Modem Swap": "#7C3AED",
-            "Troubleshooting": "#B45309"}
+# Job type colours: the ONE place they are defined. Every chart that colours by job
+# type calls job_color(), so a job type looks the same everywhere in the app.
+JOB_TYPE_COLORS = {
+    "Commercial Install": "#EA580C",        # orange
+    "Full Residential Install": "#1D4ED8",  # blue
+    "Modem Upgrade": "#15803D",             # green
+    "Router/Modem Swap": "#7C3AED",         # purple
+    "Troubleshooting": "#B45309",           # brown
+}
+_SPARE_COLORS = ["#0E7490", "#BE185D", "#6B7280"]  # for any job type not listed above
+
+
+def job_color(job_type: str) -> str:
+    """Colour for a job type; unlisted types get a stable spare colour."""
+    if job_type in JOB_TYPE_COLORS:
+        return JOB_TYPE_COLORS[job_type]
+    return _SPARE_COLORS[sum(map(ord, job_type)) % len(_SPARE_COLORS)]
+
+
 LATE_RED = "#DC2626"
-# Job types that always get a red outline (the two install types share it).
-RED_OUTLINE_TYPES = {"Commercial Install", "Full Residential Install"}
 
 @st.cache_data
 def load_data(source) -> pd.DataFrame:
@@ -142,7 +154,7 @@ def make_day_chart(tl: pd.DataFrame, day_start: float) -> go.Figure:
     xpos = {t: i for i, t in enumerate(techs)}
     tl = tl.assign(x=tl["tech_id"].map(xpos))
     types = sorted(tl["job_type"].unique())
-    color = {t: DAY_FILL.get(t, JOB_COLORS[i % len(JOB_COLORS)]) for i, t in enumerate(types)}
+    color = {t: job_color(t) for t in types}
 
     fig = go.Figure()
     # Booked slots: dashed outlines behind the actual work.
@@ -160,13 +172,11 @@ def make_day_chart(tl: pd.DataFrame, day_start: float) -> go.Figure:
     for jt in types:
         sub = tl[tl["job_type"] == jt]
         late = sub["act_end"] > sub["slot_end"]
-        always_red = jt in RED_OUTLINE_TYPES
         fig.add_trace(go.Bar(
             x=sub["x"], base=sub["act_start"], y=sub["act_end"] - sub["act_start"],
             width=0.6, name=jt, marker=dict(color=color[jt], opacity=0.85,
-                                            line=dict(color=[LATE_RED if (l or always_red)
-                                                             else color[jt] for l in late],
-                                                      width=[3 if l else 1.5 for l in late])),
+                                            line=dict(color=[LATE_RED if l else color[jt] for l in late],
+                                                      width=[3 if l else 1 for l in late])),
             customdata=list(zip(sub["ticket_id"], sub["act_start"].map(clock),
                                 sub["act_end"].map(clock), sub["slot_start"].map(clock),
                                 sub["slot_end"].map(clock), sub["actual_duration_min"],
@@ -189,7 +199,7 @@ def make_day_chart(tl: pd.DataFrame, day_start: float) -> go.Figure:
 
     fig.update_layout(
         barmode="overlay", height=height,
-        title=dict(text="Booked slots (dashed) vs. actual work (solid); thick red outline = ran past its slot",
+        title=dict(text="Booked slots (dashed) vs. actual work (solid); red outline = ran past its slot",
                    yref="container", y=1 - 12 / height, yanchor="top"),
         legend=dict(title="Job type", orientation="h", x=0,
                     yref="container", y=1 - 48 / height, yanchor="top"),
@@ -216,11 +226,11 @@ def make_job_mix_chart(df: pd.DataFrame, freq: str, period_name: str) -> go.Figu
     )
     types = sorted(counts["job_type"].unique())
     fig = go.Figure()
-    for i, jt in enumerate(types):
+    for jt in types:
         sub = counts[counts["job_type"] == jt]
         fig.add_trace(go.Scatter(
             x=sub["date"], y=sub["jobs"], mode="lines+markers", name=jt,
-            line=dict(color=JOB_COLORS[i % len(JOB_COLORS)]),
+            line=dict(color=job_color(jt)),
             hovertemplate="%{x|%b %d, %Y}<br>" + jt + ": %{y} jobs<extra></extra>",
         ))
     fig.update_layout(
@@ -366,13 +376,18 @@ def main():
 # Recommend and Impact pages
 # ---------------------------------------------------------------------------
 
+def rec_version() -> float:
+    """Changes whenever recommender.py is edited, so cached results are rebuilt."""
+    return Path(rec.__file__).stat().st_mtime
+
+
 @st.cache_data
-def cached_stats(df: pd.DataFrame):
+def cached_stats(df: pd.DataFrame, version: float):
     return rec.build_stats(df)
 
 
 @st.cache_data
-def cached_impact(df: pd.DataFrame):
+def cached_impact(df: pd.DataFrame, version: float):
     res = rec.impact(df)
     return res, dict(res.attrs)  # keep the replay details separately; cache copies drop attrs
 
@@ -411,7 +426,7 @@ def recommend_page():
     st.caption("Enter a job. The recommendation uses 18 months of service tickets: "
                "how long this job type takes, and how fast each tech in the zone does it.")
     df = need_data()
-    stats = cached_stats(df)
+    stats = cached_stats(df, rec_version())
 
     c1, c2, c3 = st.columns(3)
     job_type = c1.selectbox("Job type", sorted(df["job_type"].unique()))
@@ -431,25 +446,33 @@ def recommend_page():
 
     labels = {t: f"{t} ({s})" + ("  ★ recommended" if t == best["tech_id"] else "")
               for t, s in zip(cand["tech_id"], cand["seniority"])}
-    chosen_id = st.selectbox("Assign to", list(labels), index=0, format_func=labels.get,
+    a1, a2 = st.columns([2, 1])
+    chosen_id = a1.selectbox("Assign to", list(labels), index=0, format_func=labels.get,
                              key=f"assign_{job_type}_{zone}_{day}",
                              help="Starts on the recommended tech. Pick another to compare.")
     tech = cand[cand["tech_id"] == chosen_id].iloc[0].to_dict()
     is_best = chosen_id == best["tech_id"]
+    booked = int(a2.number_input(
+        "Job duration to book (min)", min_value=30, max_value=600, step=30,
+        value=rec.default_duration(tech["predicted"]),
+        key=f"dur_{job_type}_{zone}_{day}_{chosen_id}",
+        help="Starts at the predicted duration rounded up to the next half hour."))
+    chance = rec.chance_within(stats, tech, job_type, booked)
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Recommended tech" if is_best else "Assigned tech", tech["tech_id"],
               tech["seniority"], delta_color="off")
     m2.metric("Predicted duration", f"{tech['predicted']:.0f} min",
               f"likely {tech['low']:.0f}–{tech['high']:.0f} min", delta_color="off")
-    m3.metric("Book this slot", f"{tech['slot']} min",
-              f"{tech['slot'] - rec.TODAY_SLOT_MIN:+d} min vs. today's 2 h",
+    m3.metric("Booked duration", f"{booked} min",
+              f"{chance:.0%} of similar jobs fit · {booked - rec.TODAY_SLOT_MIN:+d} min vs. 2 h",
               delta_color="off")
     m4.metric("Free time that day", f"{tech['free_min'] / 60:.1f} h",
               f"{tech['jobs_that_day']} other job(s)", delta_color="off")
 
     st.subheader(f"{tech['tech_id']}'s stats for this job")
-    for reason in rec.explain(tech, job_type, result["is_long"], cand, best):
+    for reason in rec.explain(tech, job_type, result["is_long"], cand, best,
+                              booked_min=booked, booked_chance=chance):
         st.markdown(f"- {reason}")
 
     st.subheader("All techs in this zone")
@@ -485,7 +508,7 @@ def recommend_page():
 def impact_page():
     st.title("What changes with SchedAI scheduling?")
     df = need_data()
-    res, a = cached_impact(df)
+    res, a = cached_impact(df, rec_version())
     st.caption(f"Rules learned from tickets before {a['test_from']:%b %Y}, then replayed on "
                f"the {a['test_jobs']:,} jobs from {a['test_from']:%b %Y} to "
                f"{a['test_to']:%b %Y}. The model never saw those jobs.")
@@ -516,7 +539,7 @@ def impact_page():
                  use_container_width=True, hide_index=True)
 
     st.subheader("Slot lengths SchedAI would book (minutes)")
-    slots = cached_stats(df)["group"]["slot"].unstack()[["Junior", "Mid", "Senior"]]
+    slots = cached_stats(df, rec_version())["group"]["slot"].unstack()[["Junior", "Mid", "Senior"]]
     st.dataframe(slots, use_container_width=True)
     st.caption("Today every cell would be 120. Short jobs get shorter slots, which pays for "
                "part of the extra time long jobs need.")
